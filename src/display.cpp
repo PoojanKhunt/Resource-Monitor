@@ -145,7 +145,7 @@ void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
 
   std::cout << std::string(56, '-') << "\n";
 
-  int limit = std::min(10, static_cast<int>(process_list.size()));
+  int limit = static_cast<int>(process_list.size());
 
   for (int i = 0; i < limit; i++) {
     const auto &proc = process_list[i];
