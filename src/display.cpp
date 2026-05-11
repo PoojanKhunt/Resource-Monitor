@@ -1,4 +1,5 @@
 #include "display.hpp"
+#include "history.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -6,6 +7,16 @@
 #include <iostream>
 #include <ostream>
 #include <string>
+#include <vector>
+
+// =========================
+// PANEL LAYOUT CONSTANTS
+// =========================
+
+static constexpr int PANEL_WIDTH = 42;
+static constexpr int PANEL_GRAPH_WIDTH = (PANEL_WIDTH - 11) / 2; // = 15
+
+int panel_graph_width() { return PANEL_GRAPH_WIDTH; }
 
 // =========================
 // CLEAR SCREEN
@@ -13,26 +24,25 @@
 
 void clear_screen() { std::system("clear"); }
 
+// =========================
+// FORMAT HELPERS
+// =========================
+
 std::string format_bytes(unsigned long long bytes) {
   const char *units[] = {"B", "KB", "MB", "GB", "TB"};
-
   double size = static_cast<double>(bytes);
   int unit_index = 0;
-
-  while (size >= 1024.0 and unit_index < 4) {
+  while (size >= 1024.0 && unit_index < 4) {
     size /= 1024.0;
     unit_index++;
   }
-
   std::ostringstream oss;
   oss << std::fixed << std::setprecision(2) << size << ' ' << units[unit_index];
-
   return oss.str();
 }
 
 std::string format_uptime(double uptime_seconds) {
   long long total_seconds = static_cast<long long>(uptime_seconds);
-
   long long days = total_seconds / 86400;
   total_seconds %= 86400;
 
@@ -44,17 +54,14 @@ std::string format_uptime(double uptime_seconds) {
 
   std::ostringstream oss;
 
-  if (days > 0) {
+  if (days > 0)
     oss << days << "d ";
-  }
 
-  if (hours > 0 || days > 0) {
+  if (hours > 0 || days > 0)
     oss << hours << "h ";
-  }
 
-  if (minutes > 0 || hours > 0 || days > 0) {
+  if (minutes > 0 || hours > 0 || days > 0)
     oss << minutes << "m ";
-  }
 
   oss << seconds << "s";
 
@@ -62,12 +69,12 @@ std::string format_uptime(double uptime_seconds) {
 }
 
 std::string get_usage_color(double percentage) {
-  if (percentage >= 80.0) {
+  if (percentage >= 80.0)
     return "\033[31m";
-  }
-  if (percentage >= 50.0) {
+
+  if (percentage >= 50.0)
     return "\033[33m";
-  }
+
   return "\033[32m";
 }
 
@@ -86,18 +93,17 @@ std::string make_progress_bar(double percentage, int width) {
 
   if (filled < 0)
     filled = 0;
+
   if (filled > width)
     filled = width;
 
   std::string bar = "[";
 
-  for (int i = 0; i < filled; i++) {
-    bar += "█";
-  }
+  for (int i = 0; i < filled; i++)
+    bar += "\xe2\x96\x88"; // █
 
-  for (int i = filled; i < width; i++) {
+  for (int i = filled; i < width; i++)
     bar += "-";
-  }
 
   bar += "]";
 
@@ -107,33 +113,178 @@ std::string make_progress_bar(double percentage, int width) {
 std::string format_usage(double percentage, int width) {
   std::ostringstream oss;
 
-  std::string color = get_usage_color(percentage);
-
-  oss << color << make_progress_bar(percentage, width) << " " << std::fixed
-      << std::setprecision(2) << percentage << "%"
-      << "\033[0m";
+  oss << get_usage_color(percentage) << make_progress_bar(percentage, width)
+      << "\033[0m"
+      << " " << std::fixed << std::setprecision(2) << percentage << "%";
 
   return oss.str();
 }
+
+// =========================
+// NETWORK SPEED HELPERS
+// =========================
+
+static std::pair<double, std::string> speed_unit(double peak_bytes_per_sec) {
+  if (peak_bytes_per_sec >= 1024.0 * 1024.0 * 1024.0)
+    return {1024.0 * 1024.0 * 1024.0, "GB/s"};
+
+  if (peak_bytes_per_sec >= 1024.0 * 1024.0)
+    return {1024.0 * 1024.0, "MB/s"};
+
+  if (peak_bytes_per_sec >= 1024.0)
+    return {1024.0, "KB/s"};
+
+  return {1.0, "B/s"};
+}
+
+std::vector<std::string> make_net_graph(const std::deque<double> &history,
+                                        int width, int height) {
+  // Determine the start index of the visible window — identical to what
+  // make_graph_dynamic will render, so the peak matches exactly.
+  int start = 0;
+
+  if (static_cast<int>(history.size()) > width)
+    start = static_cast<int>(history.size()) - width;
+
+  // Peak over the CURRENT WINDOW only, not the entire history.
+  double peak = 1.0; // floor to avoid division by zero when idle
+  for (int i = start; i < static_cast<int>(history.size()); i++)
+    if (history[i] > peak)
+      peak = history[i];
+
+  auto [divisor, unit] = speed_unit(peak);
+  double scaled_max = peak / divisor;
+
+  // Scale the visible window
+  std::deque<double> scaled;
+  for (int i = start; i < static_cast<int>(history.size()); i++)
+    scaled.push_back(history[i] / divisor);
+
+  // Pass exactly `width` pre-sliced samples so make_graph_dynamic doesn't
+  // re-slice and potentially use a different window.
+  return make_graph_dynamic(scaled, static_cast<int>(scaled.size()), height,
+                            scaled_max, unit);
+}
+
+// =========================
+// PANEL HELPERS
+// =========================
+
+static int display_width(const std::string &s) {
+  int w = 0;
+  bool in_escape = false;
+
+  for (unsigned char c : s) {
+    if (in_escape) {
+      if (c == 'm')
+        in_escape = false;
+    } else if (c == '\033') {
+      in_escape = true;
+    } else if ((c & 0xC0) != 0x80) {
+      ++w;
+    }
+  }
+
+  return w;
+}
+
+std::vector<std::string> make_panel(const std::string &title,
+                                    const std::string &value,
+                                    const std::vector<std::string> &graph) {
+  std::vector<std::string> panel;
+  const int width = PANEL_WIDTH;
+
+  std::string top = "\xe2\x94\x8c\xe2\x94\x80 " + title + " ";
+
+  while (display_width(top) < width)
+    top += "\xe2\x94\x80";
+
+  top += "\xe2\x94\x90";
+  panel.push_back(top);
+
+  std::string value_line = "\xe2\x94\x82 " + value;
+
+  while (display_width(value_line) < width)
+    value_line += " ";
+  value_line += "\xe2\x94\x82";
+
+  panel.push_back(value_line);
+
+  for (const auto &row : graph) {
+    std::string line = "\xe2\x94\x82 " + row;
+
+    while (display_width(line) < width)
+      line += " ";
+
+    line += "\xe2\x94\x82";
+    panel.push_back(line);
+  }
+
+  std::string bottom = "\xe2\x94\x94";
+  for (int i = 1; i < width; i++)
+    bottom += "\xe2\x94\x80";
+
+  bottom += "\xe2\x94\x98";
+  panel.push_back(bottom);
+
+  return panel;
+}
+
+void print_two_panels(const std::vector<std::string> &left,
+                      const std::vector<std::string> &right) {
+  std::size_t lines = std::max(left.size(), right.size());
+
+  for (std::size_t i = 0; i < lines; i++) {
+    if (i < left.size())
+      std::cout << left[i];
+
+    std::cout << "  ";
+
+    if (i < right.size())
+      std::cout << right[i];
+
+    std::cout << "\n";
+  }
+}
+
+// =========================
+// MAIN DASHBOARD
+// =========================
 
 void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
                      const NetworkStats &net, unsigned long long download_speed,
                      unsigned long long upload_speed, double uptime,
                      int process_count,
-                     const std::vector<ProcessInfo> &process_list) {
+                     const std::vector<ProcessInfo> &process_list,
+                     const std::vector<std::string> &cpu_graph,
+                     const std::vector<std::string> &ram_graph,
+                     const std::vector<std::string> &download_graph,
+                     const std::vector<std::string> &upload_graph) {
   std::cout << std::fixed << std::setprecision(2);
 
   std::cout << "=========================================\n";
   std::cout << "           RESOURCE MONITOR\n";
   std::cout << "=========================================\n\n";
 
-  std::cout << "CPU Usage      : " << format_usage(cpu_usage) << "%\n";
-  std::cout << "RAM Usage      : " << format_usage(memory_usage) << "%\n";
-  std::cout << "Disk Usage     : " << format_usage(disk_usage) << "%\n";
+  auto cpu_panel = make_panel("CPU Usage", format_usage(cpu_usage), cpu_graph);
+
+  auto ram_panel =
+      make_panel("RAM Usage", format_usage(memory_usage), ram_graph);
+
+  auto download_panel = make_panel(
+      "Download Speed", format_bytes(download_speed) + "/s", download_graph);
+
+  auto upload_panel = make_panel(
+      "Upload Speed", format_bytes(upload_speed) + "/s", upload_graph);
+
+  print_two_panels(cpu_panel, ram_panel);
+  std::cout << "\n";
+  print_two_panels(download_panel, upload_panel);
+  std::cout << "\n";
+
+  std::cout << "Disk Usage     : " << format_usage(disk_usage) << "\n";
   std::cout << "Network RX     : " << format_bytes(net.rx_bytes) << "\n";
   std::cout << "Network TX     : " << format_bytes(net.tx_bytes) << "\n";
-  std::cout << "Download Speed : " << format_bytes(download_speed) << "/s\n";
-  std::cout << "Upload Speed   : " << format_bytes(upload_speed) << "/s\n";
   std::cout << "Uptime         : " << format_uptime(uptime) << "\n";
   std::cout << "Process Count  : " << process_count << "\n";
 
@@ -142,20 +293,14 @@ void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
   std::cout << std::left << std::setw(8) << "PID" << std::setw(28) << "NAME"
             << std::setw(8) << "STATE"
             << "MEMORY(KB)\n";
-
   std::cout << std::string(56, '-') << "\n";
 
-  int limit = static_cast<int>(process_list.size());
-
-  for (int i = 0; i < limit; i++) {
-    const auto &proc = process_list[i];
-
+  for (const auto &proc : process_list) {
     std::cout << std::left << std::setw(8) << proc.pid << std::setw(28)
               << proc.name << std::setw(8) << proc.state << proc.memory_kb
               << "\n";
   }
 
   std::cout << "\n=========================================\n";
-
   std::cout.flush();
 }

@@ -7,6 +7,7 @@
 
 #include "arguments.hpp"
 #include "display.hpp"
+#include "history.hpp"
 #include "system.hpp"
 
 void restore_cursor(int) {
@@ -23,7 +24,7 @@ int main(int argc, char *argv[]) {
   try {
     options = parse_arguments(argc, argv);
   } catch (const std::exception &e) {
-    std::cerr << "Eroor: " << e.what() << "\n";
+    std::cerr << "Error: " << e.what() << "\n";
     return 1;
   }
 
@@ -33,21 +34,41 @@ int main(int argc, char *argv[]) {
   std::signal(SIGINT, restore_cursor);
   std::cout << "\033[?25l";
 
+  std::deque<double> cpu_history;
+  std::deque<double> ram_history;
+  // Network histories store raw bytes/s (not a normalised percentage).
+  // make_net_graph() picks the right unit (B/s, KB/s, MB/s, GB/s) dynamically.
+  std::deque<double> download_history;
+  std::deque<double> upload_history;
+
+  CpuStats prev_cpu = real_cpu_stats();
+  NetworkStats prev_net = get_network_stats("wlo1");
+
+  const int graph_w = panel_graph_width(); // bars that fit inside a panel (15)
+  const int graph_h = 8;
+
   while (true) {
 
     // =========================
     // CPU USAGE
     // =========================
-    static CpuStats prev_cpu = real_cpu_stats();
     CpuStats curr_cpu = real_cpu_stats();
     double cpu_usage = calculate_cpu_usage(prev_cpu, curr_cpu);
     prev_cpu = curr_cpu;
+
+    update_history(cpu_history, cpu_usage);
+    std::vector<std::string> cpu_graph =
+        make_graph(cpu_history, graph_w, graph_h);
 
     // =========================
     // MEMORY USAGE
     // =========================
     MemoryStats mem = read_memory_stats();
     double memory_usage = calculate_memory_usage(mem);
+
+    update_history(ram_history, memory_usage);
+    std::vector<std::string> ram_graph =
+        make_graph(ram_history, graph_w, graph_h);
 
     // =========================
     // DISK USAGE
@@ -56,16 +77,25 @@ int main(int argc, char *argv[]) {
     double disk_usage = calculate_disk_usage(disk);
 
     // =========================
-    // NETWROK STATS
+    // NETWORK STATS
     // =========================
-    NetworkStats net{};
-    net = get_network_stats("wlo1");
+    NetworkStats net = get_network_stats("wlo1");
 
-    static NetworkStats prev_net = net;
-
+    // Raw bytes transferred in the last ~1 second interval.
     unsigned long long download_speed = net.rx_bytes - prev_net.rx_bytes;
     unsigned long long upload_speed = net.tx_bytes - prev_net.tx_bytes;
     prev_net = net;
+
+    // Store raw bytes/s — make_net_graph handles unit selection.
+    update_history(download_history, static_cast<double>(download_speed));
+    update_history(upload_history, static_cast<double>(upload_speed));
+
+    // Dynamic axis: Y labels switch between B/s, KB/s, MB/s, GB/s based on
+    // the current peak in history.
+    std::vector<std::string> download_graph =
+        make_net_graph(download_history, graph_w, graph_h);
+    std::vector<std::string> upload_graph =
+        make_net_graph(upload_history, graph_w, graph_h);
 
     // =========================
     // UPTIME
@@ -87,13 +117,10 @@ int main(int argc, char *argv[]) {
     // -------------------------
     if (!options.search.empty()) {
       std::vector<ProcessInfo> filtered;
-
       for (const auto &proc : process_list) {
-        if (proc.name.find(options.search) != std::string::npos) {
+        if (proc.name.find(options.search) != std::string::npos)
           filtered.push_back(proc);
-        }
       }
-
       process_list = filtered;
     }
 
@@ -122,12 +149,12 @@ int main(int argc, char *argv[]) {
     // =========================
     clear_screen();
 
-    if (process_list.size() > static_cast<size_t>(options.limit)) {
+    if (process_list.size() > static_cast<size_t>(options.limit))
       process_list.resize(options.limit);
-    }
 
     print_dashboard(cpu_usage, memory_usage, disk_usage, net, download_speed,
-                    upload_speed, uptime, processes, process_list);
+                    upload_speed, uptime, processes, process_list, cpu_graph,
+                    ram_graph, download_graph, upload_graph);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
