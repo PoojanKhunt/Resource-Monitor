@@ -45,6 +45,12 @@ int main() {
     NetworkStats net{};
     net = get_network_stats("wlo1");
 
+    static NetworkStats prev_net = net;
+
+    unsigned long long download_speed = net.rx_bytes - prev_net.rx_bytes;
+    unsigned long long upload_speed = net.tx_bytes - prev_net.tx_bytes;
+    prev_net = net;
+
     // =========================
     // UPTIME
     // =========================
@@ -69,8 +75,8 @@ int main() {
     // DISPLAY
     // =========================
     clear_screen();
-    print_dashboard(cpu_usage, memory_usage, disk_usage, net, uptime, processes,
-                    process_list);
+    print_dashboard(cpu_usage, memory_usage, disk_usage, net, download_speed,
+                    upload_speed, uptime, processes, process_list);
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
