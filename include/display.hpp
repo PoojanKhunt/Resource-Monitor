@@ -1,6 +1,8 @@
 #pragma once
 
+#include "gpu.hpp"
 #include "system.hpp"
+
 #include <deque>
 #include <vector>
 
@@ -25,7 +27,8 @@ std::vector<std::string> make_net_graph(const std::deque<double> &history,
                                         int width, int height);
 
 void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
-                     const NetworkStats &net, unsigned long long download_speed,
+                     const GpuStats &gpu, const NetworkStats &net,
+                     unsigned long long download_speed,
                      unsigned long long upload_speed, double uptime,
                      int process_count,
                      const std::vector<ProcessInfo> &process_list,

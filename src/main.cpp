@@ -7,6 +7,7 @@
 
 #include "arguments.hpp"
 #include "display.hpp"
+#include "gpu.hpp"
 #include "history.hpp"
 #include "system.hpp"
 
@@ -145,6 +146,11 @@ int main(int argc, char *argv[]) {
     }
 
     // =========================
+    // GPU STATS
+    // =========================
+    GpuStats gpu = get_gpu_stats();
+
+    // =========================
     // DISPLAY
     // =========================
     clear_screen();
@@ -152,9 +158,10 @@ int main(int argc, char *argv[]) {
     if (process_list.size() > static_cast<size_t>(options.limit))
       process_list.resize(options.limit);
 
-    print_dashboard(cpu_usage, memory_usage, disk_usage, net, download_speed,
-                    upload_speed, uptime, processes, process_list, cpu_graph,
-                    ram_graph, download_graph, upload_graph);
+    print_dashboard(cpu_usage, memory_usage, disk_usage, gpu, net,
+                    download_speed, upload_speed, uptime, processes,
+                    process_list, cpu_graph, ram_graph, download_graph,
+                    upload_graph);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }

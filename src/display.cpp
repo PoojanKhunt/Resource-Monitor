@@ -1,4 +1,5 @@
 #include "display.hpp"
+#include "gpu.hpp"
 #include "history.hpp"
 
 #include <algorithm>
@@ -252,7 +253,8 @@ void print_two_panels(const std::vector<std::string> &left,
 // =========================
 
 void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
-                     const NetworkStats &net, unsigned long long download_speed,
+                     const GpuStats &gpu, const NetworkStats &net,
+                     unsigned long long download_speed,
                      unsigned long long upload_speed, double uptime,
                      int process_count,
                      const std::vector<ProcessInfo> &process_list,
@@ -283,6 +285,21 @@ void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
   std::cout << "\n";
 
   std::cout << "Disk Usage     : " << format_usage(disk_usage) << "\n";
+
+  if (gpu.available) {
+    std::cout << "GPU Name       : " << gpu.name << "\n";
+    std::cout << "GPU Usage      : " << format_usage(gpu.utilization) << "\n";
+    std::cout << "GPU Memory     : " << std::fixed << std::setprecision(0)
+              << gpu.memory_used_mb << " MB / " << gpu.memory_total_mb
+              << " MB\n";
+    std::cout << "GPU Temp       : " << std::setprecision(1)
+              << gpu.temperature_c << " C\n";
+    std::cout << "GPU Power      : " << gpu.power_draw_w << " W\n";
+    std::cout << "GPU Fan Speed  : " << gpu.fan_speed_percent << "%\n";
+  } else {
+    std::cout << "GPU            : Not Detected\n";
+  }
+
   std::cout << "Network RX     : " << format_bytes(net.rx_bytes) << "\n";
   std::cout << "Network TX     : " << format_bytes(net.tx_bytes) << "\n";
   std::cout << "Uptime         : " << format_uptime(uptime) << "\n";
