@@ -17,6 +17,8 @@ struct GpuStats {
   double power_draw_w = 0.0;
 
   double fan_speed_percent = 0.0;
+
+  double graphics_clock_mhz = 0.0;
 };
 
 GpuStats get_gpu_stats();

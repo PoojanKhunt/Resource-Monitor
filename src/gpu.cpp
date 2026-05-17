@@ -61,7 +61,7 @@ GpuStats get_gpu_stats() {
   const std::string cmd =
       "nvidia-smi "
       "--query-gpu=name,utilization.gpu,memory.used,memory.total,"
-      "temperature.gpu,power.draw,fan.speed "
+      "temperature.gpu,power.draw,fan.speed,clocks.current.graphics "
       "--format=csv,noheader,nounits 2>/dev/null";
 
   std::string output = exec_command(cmd);
@@ -78,7 +78,7 @@ GpuStats get_gpu_stats() {
 
   auto fields = split_csv(line);
 
-  if (fields.size() < 7) {
+  if (fields.size() < 8) {
     return stats;
   }
 
@@ -90,6 +90,7 @@ GpuStats get_gpu_stats() {
   stats.temperature_c = to_double(fields[4]);
   stats.power_draw_w = to_double(fields[5]);
   stats.fan_speed_percent = to_double(fields[6]);
+  stats.graphics_clock_mhz = to_double(fields[7]);
 
   return stats;
 }

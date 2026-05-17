@@ -25,14 +25,41 @@ int panel_graph_width();
 // history must contain raw bytes/s values.
 std::vector<std::string> make_net_graph(const std::deque<double> &history,
                                         int width, int height);
+void print_dashboard(double cpu_usage,
+                     const std::vector<double> &per_core_usage,
+                     double memory_usage, double disk_usage,
 
-void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
-                     const GpuStats &gpu, const NetworkStats &net,
-                     unsigned long long download_speed,
-                     unsigned long long upload_speed, double uptime,
-                     int process_count,
+                     // Additional system metrics
+                     double cpu_temp, double battery_percent,
+                     const std::string &battery_status, double cpu_freq_mhz,
+                     unsigned long long disk_read_speed,
+                     unsigned long long disk_write_speed,
+
+                     // GPU
+                     const GpuStats &gpu,
+
+                     // Network
+                     const NetworkStats &net, unsigned long long download_speed,
+                     unsigned long long upload_speed,
+
+                     // General system info
+                     double uptime, int process_count,
+
+                     // Processes
                      const std::vector<ProcessInfo> &process_list,
+
+                     // Graphs
                      const std::vector<std::string> &cpu_graph,
                      const std::vector<std::string> &ram_graph,
                      const std::vector<std::string> &download_graph,
                      const std::vector<std::string> &upload_graph);
+
+double get_cpu_temperature();
+
+double get_battery_percentage();
+std::string get_battery_status();
+
+double get_cpu_frequency_mhz();
+
+unsigned long long get_disk_read_speed();
+unsigned long long get_disk_write_speed();

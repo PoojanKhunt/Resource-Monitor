@@ -252,22 +252,46 @@ void print_two_panels(const std::vector<std::string> &left,
 // MAIN DASHBOARD
 // =========================
 
-void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
-                     const GpuStats &gpu, const NetworkStats &net,
-                     unsigned long long download_speed,
-                     unsigned long long upload_speed, double uptime,
-                     int process_count,
+void print_dashboard(double cpu_usage,
+                     const std::vector<double> &per_core_usage,
+                     double memory_usage, double disk_usage,
+
+                     // New system metrics
+                     double cpu_temp, double battery_percent,
+                     const std::string &battery_status, double cpu_freq_mhz,
+                     unsigned long long disk_read_speed,
+                     unsigned long long disk_write_speed,
+
+                     // GPU
+                     const GpuStats &gpu,
+
+                     // Network
+                     const NetworkStats &net, unsigned long long download_speed,
+                     unsigned long long upload_speed,
+
+                     // General system info
+                     double uptime, int process_count,
+
+                     // Processes
                      const std::vector<ProcessInfo> &process_list,
+
+                     // Graphs
                      const std::vector<std::string> &cpu_graph,
                      const std::vector<std::string> &ram_graph,
                      const std::vector<std::string> &download_graph,
                      const std::vector<std::string> &upload_graph) {
   std::cout << std::fixed << std::setprecision(2);
 
+  // =========================
+  // HEADER
+  // =========================
   std::cout << "=========================================\n";
   std::cout << "           RESOURCE MONITOR\n";
   std::cout << "=========================================\n\n";
 
+  // =========================
+  // PANELS
+  // =========================
   auto cpu_panel = make_panel("CPU Usage", format_usage(cpu_usage), cpu_graph);
 
   auto ram_panel =
@@ -281,35 +305,99 @@ void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
 
   print_two_panels(cpu_panel, ram_panel);
   std::cout << "\n";
+
+  // =========================
+  // PER-CORE CPU USAGE
+  // =========================
+  std::cout << "CPU Cores:\n";
+
+  for (size_t i = 0; i < per_core_usage.size(); ++i) {
+    std::cout << "Core ";
+
+    if (i < 10)
+      std::cout << " ";
+
+    std::cout << i << " : " << format_usage(per_core_usage[i]) << "\n";
+  }
+
+  std::cout << "\n";
+
+  // =========================
+  // NETWORK GRAPHS
+  // =========================
   print_two_panels(download_panel, upload_panel);
   std::cout << "\n";
 
+  // =========================
+  // SYSTEM METRICS
+  // =========================
   std::cout << "Disk Usage     : " << format_usage(disk_usage) << "\n";
 
+  if (cpu_temp >= 0.0)
+    std::cout << "CPU Temp       : " << std::setprecision(1) << cpu_temp
+              << " C\n";
+
+  if (cpu_freq_mhz >= 0.0)
+    std::cout << std::setprecision(0) << "CPU Frequency  : " << cpu_freq_mhz
+              << " MHz\n";
+
+  if (battery_percent >= 0.0)
+    std::cout << std::setprecision(0) << "Battery        : " << battery_percent
+              << "% (" << battery_status << ")\n";
+
+  std::cout << "Disk Read      : " << format_bytes(disk_read_speed) << "/s\n";
+
+  std::cout << "Disk Write     : " << format_bytes(disk_write_speed) << "/s\n";
+
+  // =========================
+  // GPU METRICS
+  // =========================
   if (gpu.available) {
     std::cout << "GPU Name       : " << gpu.name << "\n";
+
     std::cout << "GPU Usage      : " << format_usage(gpu.utilization) << "\n";
-    std::cout << "GPU Memory     : " << std::fixed << std::setprecision(0)
-              << gpu.memory_used_mb << " MB / " << gpu.memory_total_mb
-              << " MB\n";
-    std::cout << "GPU Temp       : " << std::setprecision(1)
-              << gpu.temperature_c << " C\n";
+
+    std::cout << std::setprecision(0)
+              << "GPU Memory     : " << gpu.memory_used_mb << " MB / "
+              << gpu.memory_total_mb << " MB\n";
+
+    std::cout << std::setprecision(1)
+              << "GPU Temp       : " << gpu.temperature_c << " C\n";
+
     std::cout << "GPU Power      : " << gpu.power_draw_w << " W\n";
+
     std::cout << "GPU Fan Speed  : " << gpu.fan_speed_percent << "%\n";
+
+    if (gpu.graphics_clock_mhz > 0.0)
+      std::cout << std::setprecision(0)
+                << "GPU Clock      : " << gpu.graphics_clock_mhz << " MHz\n";
   } else {
     std::cout << "GPU            : Not Detected\n";
   }
 
+  // =========================
+  // NETWORK TOTALS
+  // =========================
   std::cout << "Network RX     : " << format_bytes(net.rx_bytes) << "\n";
+
   std::cout << "Network TX     : " << format_bytes(net.tx_bytes) << "\n";
+
+  // =========================
+  // GENERAL SYSTEM INFO
+  // =========================
   std::cout << "Uptime         : " << format_uptime(uptime) << "\n";
+
   std::cout << "Process Count  : " << process_count << "\n";
 
+  // =========================
+  // PROCESS TABLE
+  // =========================
   std::cout << "\nProcess rows found: " << process_list.size() << "\n\n";
 
   std::cout << std::left << std::setw(8) << "PID" << std::setw(28) << "NAME"
             << std::setw(8) << "STATE"
             << "MEMORY(KB)\n";
+
   std::cout << std::string(56, '-') << "\n";
 
   for (const auto &proc : process_list) {
@@ -318,6 +406,9 @@ void print_dashboard(double cpu_usage, double memory_usage, double disk_usage,
               << "\n";
   }
 
+  // =========================
+  // FOOTER
+  // =========================
   std::cout << "\n=========================================\n";
   std::cout.flush();
 }

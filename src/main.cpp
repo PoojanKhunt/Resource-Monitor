@@ -55,6 +55,7 @@ int main(int argc, char *argv[]) {
     // =========================
     CpuStats curr_cpu = real_cpu_stats();
     double cpu_usage = calculate_cpu_usage(prev_cpu, curr_cpu);
+    std::vector<double> per_core_usage = get_per_core_cpu_usage();
     prev_cpu = curr_cpu;
 
     update_history(cpu_history, cpu_usage);
@@ -151,6 +152,19 @@ int main(int argc, char *argv[]) {
     GpuStats gpu = get_gpu_stats();
 
     // =========================
+    // =========================
+
+    double cpu_temp = get_cpu_temperature();
+
+    double battery_percent = get_battery_percentage();
+    std::string battery_status = get_battery_status();
+
+    double cpu_freq = get_cpu_frequency_mhz();
+
+    unsigned long long disk_read_speed = get_disk_read_speed();
+    unsigned long long disk_write_speed = get_disk_write_speed();
+
+    // =========================
     // DISPLAY
     // =========================
     clear_screen();
@@ -158,10 +172,11 @@ int main(int argc, char *argv[]) {
     if (process_list.size() > static_cast<size_t>(options.limit))
       process_list.resize(options.limit);
 
-    print_dashboard(cpu_usage, memory_usage, disk_usage, gpu, net,
-                    download_speed, upload_speed, uptime, processes,
-                    process_list, cpu_graph, ram_graph, download_graph,
-                    upload_graph);
+    print_dashboard(cpu_usage, per_core_usage, memory_usage, disk_usage,
+                    cpu_temp, battery_percent, battery_status, cpu_freq,
+                    disk_read_speed, disk_write_speed, gpu, net, download_speed,
+                    upload_speed, uptime, processes, process_list, cpu_graph,
+                    ram_graph, download_graph, upload_graph);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }

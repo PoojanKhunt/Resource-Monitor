@@ -296,3 +296,179 @@ NetworkStats get_network_stats(const std::string &interface) {
 
   throw std::runtime_error("Network interface not found: " + interface);
 }
+
+std::vector<double> get_per_core_cpu_usage() {
+  static std::vector<unsigned long long> prev_total;
+  static std::vector<unsigned long long> prev_idle;
+
+  std::ifstream file("/proc/stat");
+  std::string label;
+
+  std::vector<unsigned long long> curr_total;
+  std::vector<unsigned long long> curr_idle;
+  std::vector<double> usage;
+
+  while (std::getline(file, label)) {
+    // Keep only lines starting with cpu followed by a digit: cpu0, cpu1, ...
+    if (label.size() < 4 || label.substr(0, 3) != "cpu" ||
+        !std::isdigit(static_cast<unsigned char>(label[3]))) {
+      continue;
+    }
+
+    std::istringstream iss(label);
+
+    std::string cpu_name;
+    unsigned long long user, nice, system, idle, iowait;
+    unsigned long long irq, softirq, steal;
+
+    iss >> cpu_name >> user >> nice >> system >> idle >> iowait >> irq >>
+        softirq >> steal;
+
+    unsigned long long idle_time = idle + iowait;
+    unsigned long long total_time =
+        user + nice + system + idle + iowait + irq + softirq + steal;
+
+    curr_idle.push_back(idle_time);
+    curr_total.push_back(total_time);
+  }
+
+  // First call initializes state
+  if (prev_total.empty()) {
+    prev_total = curr_total;
+    prev_idle = curr_idle;
+    return std::vector<double>(curr_total.size(), 0.0);
+  }
+
+  usage.resize(curr_total.size());
+
+  for (size_t i = 0; i < curr_total.size(); ++i) {
+    unsigned long long total_diff = curr_total[i] - prev_total[i];
+    unsigned long long idle_diff = curr_idle[i] - prev_idle[i];
+
+    if (total_diff == 0) {
+      usage[i] = 0.0;
+    } else {
+      usage[i] = 100.0 * (total_diff - idle_diff) / total_diff;
+    }
+  }
+
+  prev_total = curr_total;
+  prev_idle = curr_idle;
+
+  return usage;
+}
+
+double get_cpu_temperature() {
+  const char *paths[] = {"/sys/class/thermal/thermal_zone0/temp",
+                         "/sys/class/hwmon/hwmon0/temp1_input"};
+
+  for (const char *path : paths) {
+    std::ifstream file(path);
+
+    if (file) {
+      double temp;
+      file >> temp;
+      if (temp > 1000.0)
+        temp /= 1000.0;
+      return temp;
+    }
+  }
+
+  return -1.0;
+}
+
+double get_battery_percentage() {
+  std::ifstream file("/sys/class/power_supply/BAT0/capacity");
+  double value;
+  if (file >> value)
+    return value;
+  return -1.0;
+}
+
+double get_cpu_frequency_mhz() {
+  std::ifstream file("/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq");
+
+  double freq_khz;
+  if (file >> freq_khz)
+    return freq_khz / 1000.0;
+
+  return -1.0;
+}
+
+unsigned long long get_disk_read_speed() {
+  static unsigned long long prev = 0;
+
+  std::ifstream file("/proc/diskstats");
+  std::string line;
+  unsigned long long sectors = 0;
+
+  while (std::getline(file, line)) {
+    std::istringstream iss(line);
+
+    unsigned long long major, minor;
+    std::string name;
+    unsigned long long reads_completed, reads_merged;
+    unsigned long long sectors_read;
+    unsigned long long writes_completed, writes_merged;
+    unsigned long long sectors_written;
+
+    if (!(iss >> major >> minor >> name >> reads_completed >> reads_merged >>
+          sectors_read >> writes_completed >> writes_merged >> sectors_written))
+      continue;
+
+    // Use your main SSD. Adjust if needed.
+    if (name == "nvme0n1" || name == "sda") {
+      sectors = sectors_read;
+      break;
+    }
+  }
+
+  unsigned long long bytes = sectors * 512ULL;
+  unsigned long long diff = bytes - prev;
+  prev = bytes;
+  return diff;
+}
+
+unsigned long long get_disk_write_speed() {
+  static unsigned long long prev = 0;
+
+  std::ifstream file("/proc/diskstats");
+  std::string line;
+  unsigned long long sectors = 0;
+
+  while (std::getline(file, line)) {
+    std::istringstream iss(line);
+
+    unsigned long long major, minor;
+    std::string name;
+    unsigned long long reads_completed, reads_merged;
+    unsigned long long sectors_read;
+    unsigned long long writes_completed, writes_merged;
+    unsigned long long sectors_written;
+
+    if (!(iss >> major >> minor >> name >> reads_completed >> reads_merged >>
+          sectors_read >> writes_completed >> writes_merged >> sectors_written))
+      continue;
+
+    if (name == "nvme0n1" || name == "sda") {
+      sectors = sectors_written;
+      break;
+    }
+  }
+
+  unsigned long long bytes = sectors * 512ULL;
+  unsigned long long diff = bytes - prev;
+  prev = bytes;
+  return diff;
+}
+
+std::string get_battery_status() {
+  std::ifstream file("/sys/class/power_supply/BAT0/status");
+  std::string status;
+
+  if (std::getline(file, status)) {
+    return status;
+  }
+
+  return "Unavailable";
+}

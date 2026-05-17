@@ -83,3 +83,5 @@ struct NetworkStats {
 };
 
 NetworkStats get_network_stats(const std::string &interface = "wlo1");
+
+std::vector<double> get_per_core_cpu_usage();
